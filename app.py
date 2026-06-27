@@ -2,10 +2,11 @@ import streamlit as st
 import yfinance as yf
 import pandas as pd
 
+st.subheader("FRG Analyse eintigs chek)
 # 1. App-Styling für das Smartphone (FRG Invest Layout)
-st.set_page_config(page_title="FRG Invest - Trading Control", page_icon="⚡", layout="wide")
-st.title("⚡ FRG Invest")
-st.subheader("Roman's Weg | Fundamentaldaten | Trio-Radar")
+st.set_page_config(page_title="FRG Invest - Trading Control", page_icon="📈", layout="wide")
+st.title("📈 FRG Invest")
+st.subheader("FRG Enstigs Chek")
 
 # 2. Eingabe des Tickers (Wandelt Eingabe automatisch in Großbuchstaben um)
 ticker_input = st.text_input("Asset-Kürzel eingeben (z.B. GOOG, BMW.DE, MP):", "GOOG").strip().upper()
