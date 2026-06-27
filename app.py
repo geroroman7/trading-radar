@@ -3,7 +3,7 @@ import yfinance as yf
 import pandas as pd
 
 # 1. App-Styling für das Smartphone
-st.set_page_config(page_title="Roman's Trading Control", page_icon="⚡", layout="compact")
+st.set_page_config(page_title="Roman's Trading Control", page_icon="⚡", layout="wide")
 st.title("⚡ Roman's Trading-Radar V2")
 st.subheader("Trio | Fundamentaldaten | 360° News")
 
