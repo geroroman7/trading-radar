@@ -8,7 +8,7 @@ st.title("📈 FRG Invest")
 st.subheader("FRG Einstiegs Check")
 
 # 2. Eingabe des Tickers (Wandelt Eingabe automatisch in Großbuchstaben um)
-ticker_input = st.text_input("Asset-Kürzel eingeben (z.B. GOOG, BMW.DE, MP):", "GOOG").strip().upper()
+ticker_input = st.text_input("Asset-Kürzel eingeben (z.B. GOOG, BMW.DE, TEM):", "GOOG").strip().upper()
 
 if st.button("Asset unbarmherzig scannen"):
     with st.spinner("Scanne Finanzdaten, News und Trio-Signale..."):
@@ -16,23 +16,33 @@ if st.button("Asset unbarmherzig scannen"):
             asset = yf.Ticker(ticker_input)
             hist = asset.history(period="1y")
             
-            if hist.empty:
-                st.error("Kürzel nicht gefunden. Bitte Eingabe prüfen (z.B. '.DE' für deutsche Aktien anhängen).")
+            if hist.empty and not asset.info:
+                st.error("Kürzel nicht gefunden. Bitte echtes Börsenkürzel prüfen (z.B. TEM für Tempus AI, BMW.DE für Xetra).")
             else:
-                # Robustere Kursabfrage für das Wochenende und geschlossene Märkte
-                current_price = hist['Close'].iloc[-1]
+                # Ultimativ robuste Kursabfrage für das Wochenende und Neulinge
+                current_price = None
+                if 'Close' in hist.columns and len(hist) > 0:
+                    current_price = hist['Close'].iloc[-1]
+                
+                if current_price is None or pd.isna(current_price):
+                    current_price = asset.info.get('regularMarketPrice')
+                if current_price is None or pd.isna(current_price):
+                    current_price = asset.info.get('previousClose')
+                if current_price is None or pd.isna(current_price):
+                    # Vierte Sicherheitsstufe für ganz frische IPOs am Wochenende
+                    fast_info = asset.fast_info
+                    if 'last_price' in fast_info:
+                        current_price = fast_info['last_price']
+                
+                # Fallback falls gar nichts greift
+                if current_price is None or pd.isna(current_price):
+                    current_price = 0.0
                 
                 # Währung sauber auslesen
                 currency = asset.info.get('currency', 'USD')
-                if currency == 'EUR':
-                    currency_symbol = 'EUR'
-                elif currency == 'USD':
-                    currency_symbol = 'USD'
-                else:
-                    currency_symbol = currency
                 
                 st.write(f"### Aktueller Kurs für {ticker_input}")
-                st.metric(label="Letzter gültiger Schlusskurs", value=f"{current_price:.2f} {currency_symbol}")
+                st.metric(label="Letzter gültiger Schlusskurs", value=f"{current_price:.2f} {currency}")
                 
                 # --- 3. FUNDAMENTAL DATA CHECK (EBIT & CASHFLOW) ---
                 financials = asset.financials
@@ -62,26 +72,40 @@ if st.button("Asset unbarmherzig scannen"):
                 
                 # --- 4. TECHNISCHE INDIKATOREN (UNSER TRIO-CODE) ---
                 # Zyklus-Check (Stufe 1 bis 4) via MA200
-                hist['MA200'] = hist['Close'].rolling(window=200).mean()
-                latest_close = hist['Close'].iloc[-1]
-                latest_ma200 = hist['MA200'].iloc[-1]
-                
                 zyklus_passed = False
-                if not pd.isna(latest_ma200):
-                    zyklus_passed = latest_close > latest_ma200
-                zyklus_info = "✅ Stufe 2 (Aufphase - Kurs über MA200)" if zyklus_passed else "❌ Keine Stufe 2 (Unter MA200 / Vorsicht!)"
+                zyklus_info = "❌ Keine Stufe 2 (Unter MA200 / Vorsicht!)"
+                
+                if 'Close' in hist.columns and len(hist) >= 200:
+                    hist['MA200'] = hist['Close'].rolling(window=200).mean()
+                    latest_close = hist['Close'].iloc[-1]
+                    latest_ma200 = hist['MA200'].iloc[-1]
+                    if not pd.isna(latest_ma200):
+                        zyklus_passed = latest_close > latest_ma200
+                        zyklus_info = "✅ Stufe 2 (Aufphase - Kurs über MA200)" if zyklus_passed else "❌ Keine Stufe 2 (Unter MA200 / Vorsicht!)"
+                else:
+                    # Wenn die Aktie jünger als 200 Tage ist (wie TEM)
+                    zyklus_info = "❌ Keine Stufe 2 (Aktie zu frisch am Markt / Kein MA200 verfügbar)"
                 
                 # Strukturelles Momentum (Frühwarnsystem via MA50)
-                hist['MA50'] = hist['Close'].rolling(window=50).mean()
-                latest_ma50 = hist['MA50'].iloc[-1]
-                momentum_passed = latest_close > latest_ma50 if not pd.isna(latest_ma50) else False
-                momentum_info = "✅ Aufwärts (Strukturell stark)" if momentum_passed else "❌ Abwärts oder Seitwärts"
+                momentum_passed = False
+                momentum_info = "❌ Abwärts oder Seitwärts"
+                if 'Close' in hist.columns and len(hist) >= 50:
+                    hist['MA50'] = hist['Close'].rolling(window=50).mean()
+                    latest_close = hist['Close'].iloc[-1]
+                    latest_ma50 = hist['MA50'].iloc[-1]
+                    if not pd.isna(latest_ma50):
+                        momentum_passed = latest_close > latest_ma50
+                        momentum_info = "✅ Aufwärts (Strukturell stark)" if momentum_passed else "❌ Abwärts oder Seitwärts"
                 
                 # Relative Stärke (Kraft im Markt über 6 Monate)
-                hist['RS_Rating'] = hist['Close'].pct_change(periods=126)
-                latest_rs = hist['RS_Rating'].iloc[-1]
-                staerke_passed = latest_rs > 0 if not pd.isna(latest_rs) else False
-                staerke_info = "✅ Hohe Kraft im Markt" if staerke_passed else "❌ Schwach / Keine relative Stärke"
+                staerke_passed = False
+                staerke_info = "❌ Schwach / Keine relative Stärke"
+                if 'Close' in hist.columns and len(hist) >= 126:
+                    hist['RS_Rating'] = hist['Close'].pct_change(periods=126)
+                    latest_rs = hist['RS_Rating'].iloc[-1]
+                    if not pd.isna(latest_rs):
+                        staerke_passed = latest_rs > 0
+                        staerke_info = "✅ Hohe Kraft im Markt" if staerke_passed else "❌ Schwach / Keine relative Stärke"
                 
                 # News Radar (Stimmungs-Check)
                 news_passed = True
@@ -109,11 +133,11 @@ if st.button("Asset unbarmherzig scannen"):
                 
                 st.write("---")
                 if score == 5:
-                    st.success(f"🟢 Ampel GRÜN ({match_percentage:.0f}% Match) - Ein klares Asset für das Portfolio (Kirschen/Perlen sammeln!)")
+                    st.success(f"🟢 Ampel GRÜN ({match_percentage:.0f}% Match) - Ein klares Asset für das Portfolio (Assets/Perlen sammeln!)")
                 elif score >= 3:
                     st.warning(f"🟡 Ampel GELB ({match_percentage:.0f}% Match) - Auf der Beobachtungsliste halten. Kein optimaler Zykluspunkt.")
                 else:
-                    st.error(f"🔴 Ampel ROT ({match_percentage:.0f}% Match) - Absolutes Verbot / Freeman-Exit!")
+                    st.error(f"🔴 Ampel ROT ({match_percentage:.0f}% Match) - Absolutes Verbot / FRG-Exit!")
                     
         except Exception as e:
             st.error(f"Fehler bei der Datenabfrage für dieses Asset: {e}")
